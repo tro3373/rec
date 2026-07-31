@@ -1,0 +1,70 @@
+package rec
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
+
+// Options configures a rec run. Reading the environment is left to main.
+type Options struct {
+	OutRoot      string // Parent directory for the artifacts.
+	Engine       string // Transcription engine name. Empty means the default.
+	WhisperModel string // Path to the whisper model. Empty means the default.
+	GeminiModel  string // Gemini model name.
+	GeminiAPIKey string // Gemini API key.
+}
+
+// Run records a meeting and produces the minutes.
+// Recording continues until Ctrl-C.
+func Run(ctx context.Context, opts Options) error {
+	e, err := parseEngine(opts.Engine)
+	if err != nil {
+		return err
+	}
+	// Check the prerequisites first so a whole meeting is not wasted.
+	if err := preflight(e, opts); err != nil {
+		return err
+	}
+	dev, err := detectDevices()
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(opts.OutRoot, time.Now().Format("20060102-150405"))
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("cannot create the output directory: %w", err)
+	}
+
+	ts := tracks(dev, dir)
+	fmt.Fprintf(os.Stderr, "recording (Ctrl-C to stop)\n  self:   %s\n  other:  %s\n  output: %s\n",
+		dev.Self, dev.Other, dir)
+	if err := record(ts); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(os.Stderr, "transcribing with %s\n", e)
+	segments, err := transcribeAll(ctx, e, ts, opts)
+	if err != nil {
+		return err
+	}
+
+	transcript := renderTranscript(mergeSegments(segments[0], segments[1]))
+	transcriptPath := filepath.Join(dir, "transcript.md")
+	if err := os.WriteFile(transcriptPath, []byte(transcript), 0o600); err != nil {
+		return fmt.Errorf("cannot save the transcript: %w", err)
+	}
+
+	fmt.Fprintln(os.Stderr, "generating the minutes")
+	minutes, err := generateMinutes(transcript)
+	if err != nil {
+		return fmt.Errorf("%w\n  the transcript is kept at %s", err, transcriptPath)
+	}
+	minutesPath := filepath.Join(dir, "minutes.md")
+	if err := os.WriteFile(minutesPath, minutes, 0o600); err != nil {
+		return fmt.Errorf("cannot save the minutes: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "done: %s\n", minutesPath)
+	return nil
+}
