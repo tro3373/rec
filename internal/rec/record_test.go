@@ -59,3 +59,37 @@ func TestFfmpegCmd(t *testing.T) {
 		})
 	}
 }
+
+func TestMixArgs(t *testing.T) {
+	tests := []struct {
+		name   string
+		tracks []track
+		path   string
+		want   []string
+	}{
+		{
+			name: "2トラックを原音量のままリミッタ付きで1本のwavへ合成する引数になること",
+			tracks: []track{
+				{Speaker: speakerSelf, Path: "/out/self.wav"},
+				{Speaker: speakerOther, Path: "/out/other.wav"},
+			},
+			path: "/out/mixed.wav",
+			want: []string{
+				"ffmpeg",
+				"-hide_banner", "-loglevel", "error", "-nostdin",
+				"-i", "/out/self.wav",
+				"-i", "/out/other.wav",
+				"-filter_complex", "amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.95",
+				"-y", "/out/mixed.wav",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ffmpegCmd(mixArgs(tt.tracks, tt.path)...).Args
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("ffmpegCmd(mixArgs()) = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

@@ -56,6 +56,7 @@ Everything lands in `out/<YYYYmmdd-HHMMSS>/`.
 
 - `self.wav`: your voice
 - `other.wav`: the other side
+- `mixed.wav`: both sides in one file, for listening back
 - `transcript.md`: timestamped transcript
 - `minutes.md`: the minutes
 

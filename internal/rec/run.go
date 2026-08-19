@@ -44,6 +44,11 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
+	// The mixdown is only for listening back, so a failure must not lose the minutes.
+	if err := mix(ts, filepath.Join(dir, mixName)); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+	}
+
 	fmt.Fprintf(os.Stderr, "transcribing with %s\n", e)
 	segments, err := transcribeAll(ctx, e, ts, opts)
 	if err != nil {

@@ -48,6 +48,30 @@ func ffmpegCmd(args ...string) *exec.Cmd {
 	return cmd
 }
 
+// mixName is the merged wav that sits next to the per-speaker tracks.
+const mixName = "mixed.wav"
+
+// mixArgs merges the recorded tracks into one wav for listening back.
+// normalize=0 keeps the original levels (amix would otherwise halve both) and
+// alimiter absorbs the peaks when everyone talks at once.
+func mixArgs(ts []track, path string) []string {
+	args := make([]string, 0, len(ts)*2+4)
+	for _, t := range ts {
+		args = append(args, "-i", t.Path)
+	}
+	return append(args,
+		"-filter_complex", fmt.Sprintf("amix=inputs=%d:duration=longest:normalize=0,alimiter=limit=0.95", len(ts)),
+		"-y", path)
+}
+
+// mix writes the merged wav. The transcript does not depend on it.
+func mix(ts []track, path string) error {
+	if err := ffmpegCmd(mixArgs(ts, path)...).Run(); err != nil {
+		return fmt.Errorf("cannot mix the tracks into %s: %w", path, err)
+	}
+	return nil
+}
+
 // stripExt drops the extension so sibling file names can be derived.
 func stripExt(path string) string {
 	return strings.TrimSuffix(path, filepath.Ext(path))
