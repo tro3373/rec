@@ -34,14 +34,51 @@ func preflight(e engine, opts Options) error {
 		}
 		return nil
 	}
-	_, err := whisperModel(opts.WhisperModel)
+	if _, err := whisperModel(opts.WhisperModel); err != nil {
+		return err
+	}
+	_, err := vadModel(opts.VADModel)
 	return err
 }
 
+// repeatLimit is how many identical segments in a row survive. Whisper collapses
+// into a phrase learned from its training data when it hears no speech and then
+// repeats it for the whole stretch; real speech rarely repeats more than twice.
+const repeatLimit = 2
+
 // transcribeAll transcribes every track and returns results in track order.
 func transcribeAll(ctx context.Context, e engine, ts []track, opts Options) ([][]segment, error) {
+	all, err := transcribe(ctx, e, ts, opts)
+	if err != nil {
+		return nil, err
+	}
+	for i, segs := range all {
+		all[i] = dropRepeats(segs)
+	}
+	return all, nil
+}
+
+// transcribe dispatches to the engine.
+func transcribe(ctx context.Context, e engine, ts []track, opts Options) ([][]segment, error) {
 	if e == engineGemini {
 		return transcribeGemini(ctx, ts, opts.GeminiModel, opts.GeminiAPIKey)
 	}
-	return transcribeWhisper(ts, opts.WhisperModel)
+	return transcribeWhisper(ts, opts)
+}
+
+// dropRepeats keeps at most repeatLimit identical segments in a row.
+func dropRepeats(segs []segment) []segment {
+	out := make([]segment, 0, len(segs))
+	run := 0
+	for i, s := range segs {
+		if i > 0 && s.Text == segs[i-1].Text {
+			run++
+		} else {
+			run = 0
+		}
+		if run < repeatLimit {
+			out = append(out, s)
+		}
+	}
+	return out
 }

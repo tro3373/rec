@@ -13,6 +13,7 @@ type Options struct {
 	OutRoot      string // Parent directory for the artifacts.
 	Engine       string // Transcription engine name. Empty means the default.
 	WhisperModel string // Path to the whisper model. Empty means the default.
+	VADModel     string // Path to the silero VAD model. Empty means the default.
 	GeminiModel  string // Gemini model name.
 	GeminiAPIKey string // Gemini API key.
 }

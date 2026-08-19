@@ -6,8 +6,8 @@
 #   whisper-cli local transcription (whisper-cpp), only for -engine whisper
 #   claude      generates the minutes; install it yourself, no distro package
 #
-# NOTE: whisper_model mirrors defaultWhisperModel in internal/rec/whisper.go.
-#       Keep both in sync, or point REC_WHISPER_MODEL at your own path.
+# NOTE: the model paths mirror cacheModel in internal/rec/whisper.go.
+#       Keep both in sync, or point REC_WHISPER_MODEL / REC_VAD_MODEL at your own path.
 
 pacman_pkgs := ffmpeg libpulse whisper-cpp
 
@@ -25,7 +25,13 @@ whisper_model_name := ggml-large-v3-turbo.bin
 whisper_model := $(whisper_model_dir)/$(whisper_model_name)
 whisper_model_url := https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$(whisper_model_name)
 
-setup: deps-system deps-go whisper-model deps-check
+# VAD keeps silence away from whisper, which otherwise hallucinates a phrase
+# from its training data and repeats it for the whole silent stretch.
+vad_model_name := ggml-silero-v5.1.2.bin
+vad_model := $(whisper_model_dir)/$(vad_model_name)
+vad_model_url := https://huggingface.co/ggml-org/whisper-vad/resolve/main/$(vad_model_name)
+
+setup: deps-system deps-go whisper-model vad-model deps-check
 
 deps-system:
 	@echo "==> Installing system packages" >&2
@@ -51,6 +57,15 @@ whisper-model:
 		curl -fL --progress-bar -o "$(whisper_model)" "$(whisper_model_url)"; \
 	fi
 
+vad-model:
+	@if [[ -f "$(vad_model)" ]]; then \
+		echo "==> VAD model already present: $(vad_model)" >&2; \
+	else \
+		echo "==> Downloading the VAD model, about 900KB" >&2; \
+		mkdir -p "$(whisper_model_dir)"; \
+		curl -fL --progress-bar -o "$(vad_model)" "$(vad_model_url)"; \
+	fi
+
 deps-check:
 	@echo "==> Checking dependencies" >&2
 	@missing=0; \
@@ -66,6 +81,12 @@ deps-check:
 		printf "  %-18s %s\n" "whisper model" "$(whisper_model)"; \
 	else \
 		printf "  %-18s MISSING (make whisper-model)\n" "whisper model"; \
+		missing=1; \
+	fi; \
+	if [[ -f "$(vad_model)" ]]; then \
+		printf "  %-18s %s\n" "VAD model" "$(vad_model)"; \
+	else \
+		printf "  %-18s MISSING (make vad-model)\n" "VAD model"; \
 		missing=1; \
 	fi; \
 	exit $$missing

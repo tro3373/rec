@@ -157,3 +157,54 @@ func TestParseTimestamp(t *testing.T) {
 		})
 	}
 }
+
+func TestDropRepeats(t *testing.T) {
+	seg := func(ms int, text string) segment { return segment{StartMs: ms, Text: text} }
+
+	tests := []struct {
+		name string
+		segs []segment
+		want []segment
+	}{
+		{
+			name: "3連続以上の同一テキストが2件に切り詰められること",
+			segs: []segment{
+				seg(0, "本題"),
+				seg(1000, "ご視聴ありがとうございました"),
+				seg(2000, "ご視聴ありがとうございました"),
+				seg(3000, "ご視聴ありがとうございました"),
+				seg(4000, "ご視聴ありがとうございました"),
+				seg(5000, "続き"),
+			},
+			want: []segment{
+				seg(0, "本題"),
+				seg(1000, "ご視聴ありがとうございました"),
+				seg(2000, "ご視聴ありがとうございました"),
+				seg(5000, "続き"),
+			},
+		},
+		{
+			name: "2連続までの相槌は残ること",
+			segs: []segment{seg(0, "はい。"), seg(1000, "はい。"), seg(2000, "本題")},
+			want: []segment{seg(0, "はい。"), seg(1000, "はい。"), seg(2000, "本題")},
+		},
+		{
+			name: "連続していない同一テキストは畳まれないこと",
+			segs: []segment{seg(0, "はい。"), seg(1000, "本題"), seg(2000, "はい。")},
+			want: []segment{seg(0, "はい。"), seg(1000, "本題"), seg(2000, "はい。")},
+		},
+		{
+			name: "空入力で空が返ること",
+			segs: nil,
+			want: []segment{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := dropRepeats(tt.segs)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("dropRepeats() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}

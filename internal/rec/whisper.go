@@ -3,7 +3,6 @@ package rec
 import (
 	"cmp"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,43 +16,66 @@ const (
 	whisperLang = "ja"
 	// blankAudio is the literal whisper emits for silent stretches.
 	blankAudio = "[BLANK_AUDIO]"
+	// vadModelName is the silero model whisper.cpp loads for --vad.
+	vadModelName = "ggml-silero-v5.1.2.bin"
+	// whisperModelName is the transcription model used when nothing is configured.
+	whisperModelName = "ggml-large-v3-turbo.bin"
 )
 
-// whisperModel resolves the model path and verifies that it exists.
+// whisperModel resolves the transcription model path and verifies that it exists.
 func whisperModel(configured string) (string, error) {
-	path := cmp.Or(configured, os.Getenv("REC_WHISPER_MODEL"), defaultWhisperModel())
+	return resolveModel(configured, os.Getenv("REC_WHISPER_MODEL"), whisperModelName,
+		"-model or REC_WHISPER_MODEL", "ggerganov/whisper.cpp")
+}
+
+// vadModel resolves the silero VAD model path and verifies that it exists.
+// VAD keeps silence away from whisper, which otherwise hallucinates a learned
+// phrase and repeats it for the whole silent stretch.
+func vadModel(configured string) (string, error) {
+	return resolveModel(configured, os.Getenv("REC_VAD_MODEL"), vadModelName,
+		"-vad-model or REC_VAD_MODEL", "ggml-org/whisper-vad")
+}
+
+// resolveModel picks the first configured path, falling back to the cache dir,
+// and turns a missing file into a message that says how to fetch it.
+func resolveModel(configured, env, name, setHint, repo string) (string, error) {
+	path := cmp.Or(configured, env, cacheModel(name))
 	if path == "" {
-		return "", errors.New("cannot locate a whisper model: set -model or REC_WHISPER_MODEL")
+		return "", fmt.Errorf("cannot locate %s: set %s", name, setHint)
 	}
 	// #nosec G703 -- path points at the model the user chose; nothing but a stat happens.
 	if _, err := os.Stat(path); err != nil {
 		return "", fmt.Errorf(
-			"whisper model not found: %s\n"+
-				"  get it with: mkdir -p %s && curl -L -o %s https://huggingface.co/ggerganov/whisper.cpp/resolve/main/%s",
-			path, filepath.Dir(path), path, filepath.Base(path))
+			"model not found: %s\n"+
+				"  get it with: mkdir -p %s && curl -L -o %s https://huggingface.co/%s/resolve/main/%s",
+			path, filepath.Dir(path), path, repo, filepath.Base(path))
 	}
 	return path, nil
 }
 
-// defaultWhisperModel is where the model lives when nothing is configured.
-func defaultWhisperModel() string {
+// cacheModel is where a model lives when nothing is configured.
+func cacheModel(name string) string {
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(cache, "whisper.cpp", "ggml-large-v3-turbo.bin")
+	return filepath.Join(cache, "whisper.cpp", name)
 }
 
 // transcribeWhisper transcribes every track with the local whisper-cli.
 // All tracks go through a single process so the 1.6GB model is loaded once.
 // whisper-cli pairs repeated -of flags with the input files positionally.
-func transcribeWhisper(ts []track, configuredModel string) ([][]segment, error) {
-	model, err := whisperModel(configuredModel)
+func transcribeWhisper(ts []track, opts Options) ([][]segment, error) {
+	model, err := whisperModel(opts.WhisperModel)
+	if err != nil {
+		return nil, err
+	}
+	vad, err := vadModel(opts.VADModel)
 	if err != nil {
 		return nil, err
 	}
 	bases := make([]string, len(ts))
-	args := []string{"-m", model, "-l", whisperLang, "-oj"}
+	args := []string{"-m", model, "-l", whisperLang, "-oj", "--vad", "-vm", vad}
 	for i, t := range ts {
 		bases[i] = stripExt(t.Path)
 		args = append(args, "-of", bases[i])
