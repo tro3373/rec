@@ -11,14 +11,20 @@
 
 pacman_pkgs := ffmpeg libpulse whisper-cpp
 
+golangci_lint_version := v2.12.2
+
 go_tools := \
-	github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest \
+	github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(golangci_lint_version) \
 	gotest.tools/gotestsum@latest \
 	github.com/vladopajic/go-test-coverage/v2@latest \
 	github.com/goreleaser/goreleaser/v2@latest
 
 deps_runtime := ffmpeg pactl whisper-cli claude
 deps_dev := golangci-lint gotestsum go-test-coverage goreleaser
+
+.PHONY: golangci-lint-version
+golangci-lint-version:
+	@echo "$(golangci_lint_version)"
 
 whisper_model_dir := $(if $(XDG_CACHE_HOME),$(XDG_CACHE_HOME),$(HOME)/.cache)/whisper.cpp
 whisper_model_name := ggml-large-v3-turbo.bin
