@@ -8,6 +8,7 @@ it into markdown minutes.
 - Ctrl-C stops the recording, then transcription and minutes generation run
   automatically
 - Attributes every utterance to either you or the other side
+- `rec watch` detects a call starting on its own and records it unattended
 
 The transcript and the minutes are written in Japanese. See [Limitations](#limitations).
 
@@ -19,6 +20,7 @@ The transcript and the minutes are written in Japanese. See [Limitations](#limit
 | Transcription (default) | `whisper-cli` plus a transcription model and a VAD model |
 | Transcription (alternative) | `GEMINI_API_KEY` |
 | Minutes | the `claude` CLI |
+| Posting to Slack (optional) | the `slk` CLI |
 
 ## Setup
 
@@ -43,10 +45,12 @@ Without pacman, `deps-system` prints the package names and stops.
 ## Usage
 
 ```sh
-make build         # writes /tmp/rec
+make build         # writes ./rec
+make install       # copies it to ~/.local/bin/rec
 go build -o rec ./cmd/rec
 
 ./rec              # start recording, hit Ctrl-C when the meeting ends
+./rec watch        # keep running, record every call it detects
 ./rec -engine gemini
 ./rec -version
 ```
@@ -61,6 +65,64 @@ Everything lands in `out/<YYYYmmdd-HHMMSS>/`.
 - `transcript.md`: timestamped transcript
 - `minutes.md`: the minutes
 
+## Watching for calls
+
+`rec watch` stays running and records on its own whenever Slack, Zoom or Google
+Meet opens the microphone. Every call produces its own output directory, exactly
+like a manual run.
+
+Detection reads the PulseAudio/PipeWire recording streams through `pactl`:
+
+| App | `application.process.binary` |
+| --- | --- |
+| Slack huddle | `slack` |
+| Zoom | `zoom` |
+| Google Meet | `chrome` (it runs inside the browser) |
+
+A call starts as soon as one of them has a *running* stream, and ends only once
+every stream has been gone for 10 seconds. That delay is the point: the apps
+tear a stream down and open the next one within the same second while the call
+goes on. Muting yourself does not stop the recording either, because a paused
+stream still counts as a call in progress.
+
+## Running as a service
+
+It has to be a **user** unit. Recording talks to the session's PipeWire socket,
+which a system unit running as root cannot reach.
+
+```sh
+make install    # the binary, the unit, an env template, then daemon-reload
+$EDITOR ~/.config/rec/env
+make service    # enable it and start it
+journalctl --user -u rec -f
+```
+
+`make install` writes the binary to `~/.local/bin`, the unit to
+`~/.config/systemd/user`, and a starter `~/.config/rec/env` only when that file
+does not exist yet, so your own edits survive a reinstall. Override `bin_dir`,
+`service_dir` or `env_file` to put them elsewhere.
+
+After rebuilding, `make install && make service` picks up the new binary:
+`service` restarts the unit rather than leaving the old process running.
+
+`loginctl enable-linger` is not needed. Without a login there is no PipeWire
+session, and so no call to record.
+
+The unit sets `PATH` explicitly. The systemd user manager does not inherit the
+login shell's `PATH`, and `rec` shells out to `claude` and `slk`.
+
+## Posting to Slack
+
+`-slack` posts the minutes when the run is over, through the `slk` CLI, which
+already owns the token and the channel.
+
+- the summary section becomes the message
+- the whole `minutes.md` is attached as a file, since Slack truncates a post at
+  40,000 characters and recommends a snippet for anything long
+
+`rec` calls `slk` with `--no-auto-upload`. Without that flag `slk` turns any
+message over 10 lines into a file on its own, which would leave the post empty.
+
 ## Options
 
 | Flag | Env | Default | Description |
@@ -70,6 +132,8 @@ Everything lands in `out/<YYYYmmdd-HHMMSS>/`.
 | `-model` | `REC_WHISPER_MODEL` | `$XDG_CACHE_HOME/whisper.cpp/ggml-large-v3-turbo.bin` | whisper model file |
 | `-vad-model` | `REC_VAD_MODEL` | `$XDG_CACHE_HOME/whisper.cpp/ggml-silero-v5.1.2.bin` | silero VAD model file |
 | `-gemini-model` | - | `gemini-2.5-flash` | Gemini model name |
+| `-slack` | `REC_SLACK` | off | post the minutes to Slack with `slk` |
+| `-slack-channel` | `REC_SLACK_CHANNEL` | the `slk` config | Slack channel to post to |
 | `-version` | - | - | print the version and exit |
 
 ## Development
@@ -95,6 +159,8 @@ The Makefile is split by concern under `.mk/`.
 - The two tracks are transcribed sequentially. whisper handles both in one
   process so the model is loaded only once.
 - Linux only. It depends on `pactl` and `ffmpeg -f pulse`.
+- `rec watch` cannot tell Google Meet apart from anything else Chrome uses the
+  microphone for. Any page that records audio starts a recording.
 - whisper hallucinates on silence, repeating a phrase learned from its training
   data ("ご視聴ありがとうございました") for the whole silent stretch. VAD drops
   the silence before whisper sees it, and identical segments are collapsed to at

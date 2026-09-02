@@ -16,6 +16,8 @@ type Options struct {
 	VADModel     string // Path to the silero VAD model. Empty means the default.
 	GeminiModel  string // Gemini model name.
 	GeminiAPIKey string // Gemini API key.
+	SlackPost    bool   // Post the minutes to Slack once the run is over.
+	SlackChannel string // Slack channel override. Empty means the slk config.
 }
 
 // Run records a meeting and produces the minutes.
@@ -29,6 +31,12 @@ func Run(ctx context.Context, opts Options) error {
 	if err := preflight(e, opts); err != nil {
 		return err
 	}
+	return runOnce(ctx, e, opts, "recording (Ctrl-C to stop)", recordUntilInterrupt)
+}
+
+// runOnce records one meeting and produces the minutes.
+// The stop condition belongs to rec, which returns once the recording is over.
+func runOnce(ctx context.Context, e engine, opts Options, banner string, rec func([]track) error) error {
 	dev, err := detectDevices()
 	if err != nil {
 		return err
@@ -39,9 +47,9 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	ts := tracks(dev, dir)
-	fmt.Fprintf(os.Stderr, "recording (Ctrl-C to stop)\n  self:   %s\n  other:  %s\n  output: %s\n",
-		dev.Self, dev.Other, dir)
-	if err := record(ts); err != nil {
+	fmt.Fprintf(os.Stderr, "%s\n  self:   %s\n  other:  %s\n  output: %s\n",
+		banner, dev.Self, dev.Other, dir)
+	if err := rec(ts); err != nil {
 		return err
 	}
 
@@ -72,5 +80,13 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("cannot save the minutes: %w", err)
 	}
 	fmt.Fprintf(os.Stderr, "done: %s\n", minutesPath)
+
+	if !opts.SlackPost {
+		return nil
+	}
+	// The minutes are already on disk, so a failed post must not fail the run.
+	if err := postToSlack(opts, minutesPath, minutes); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+	}
 	return nil
 }
