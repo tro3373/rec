@@ -1,0 +1,20 @@
+[Unit]
+Description=rec - watch for calls and turn them into minutes
+# Recording needs the session's PipeWire, so this can only be a user unit.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+# The user manager does not inherit the login shell's PATH, and rec shells out
+# to claude (~/.local/bin) and slk (~/.dot/bin).
+Environment=PATH=%h/.local/bin:%h/.dot/bin:/usr/local/bin:/usr/bin
+# GEMINI_API_KEY, REC_OUT_DIR, REC_SLACK and friends live here.
+EnvironmentFile=-%h/.config/rec/env
+ExecStart=%h/.local/bin/rec watch
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target

@@ -77,12 +77,17 @@ func stripExt(path string) string {
 	return strings.TrimSuffix(path, filepath.Ext(path))
 }
 
-// record starts every track and keeps recording until Ctrl-C.
-// Ctrl-C is bound to stopping the recording only; transcription still runs after.
-func record(ts []track) error {
+// recordUntilInterrupt records until Ctrl-C.
+// The binding is released on return, so Ctrl-C stops the recording only and
+// the transcription that follows stays interruptible on its own.
+func recordUntilInterrupt(ts []track) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	return record(ctx, ts)
+}
 
+// record starts every track and keeps recording until ctx is done.
+func record(ctx context.Context, ts []track) error {
 	cmds := make([]*exec.Cmd, 0, len(ts))
 	for _, t := range ts {
 		cmd := ffmpegCmd(ffmpegArgs(t)...)
