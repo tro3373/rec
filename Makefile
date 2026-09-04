@@ -14,3 +14,11 @@ export
 include $(mkfile_dir)/.mk/*.mk
 
 all: clean tidy fmt lint build test
+
+# The one thing to run after a clone. `install` is deliberately not wired to
+# `setup`: setup wants sudo, re-resolves the Go tools over the network, and ends
+# in a check that fails on anything it cannot install itself. That belongs to
+# the first run, not to every rebuild. Recursive so the order is kept under -j.
+bootstrap:
+	@$(MAKE) setup
+	@$(MAKE) install

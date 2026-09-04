@@ -53,7 +53,9 @@ install: build
 		install -Dm600 systemd/env.example "$(env_file)"; \
 	fi
 	@systemctl --user daemon-reload
-	@echo "==> Installed. Start it with: make service" >&2
+	@echo "==> Installed. Next:" >&2
+	@echo "      1. edit $(env_file)" >&2
+	@echo "      2. make service" >&2
 
 # Enables the unit and picks up a freshly installed binary.
 service:
