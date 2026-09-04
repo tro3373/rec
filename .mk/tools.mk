@@ -54,23 +54,27 @@ deps-go:
 		go install "$$m"; \
 	done
 
+# Canned recipe: $(1) destination, $(2) url, $(3) what to say while downloading.
+# curl writes to a temp file first. A download interrupted straight onto the
+# final path would look present to every later -f check and would only surface
+# as a whisper-cli failure once a meeting had already been recorded.
+define fetch_model
+@if [[ -f "$(1)" ]]; then \
+	echo "==> Already present: $(1)" >&2; \
+else \
+	echo "==> Downloading $(3)" >&2; \
+	mkdir -p "$(whisper_model_dir)"; \
+	trap 'rm -f "$(1).part"' EXIT INT TERM; \
+	curl -fL --progress-bar -o "$(1).part" "$(2)"; \
+	mv "$(1).part" "$(1)"; \
+fi
+endef
+
 whisper-model:
-	@if [[ -f "$(whisper_model)" ]]; then \
-		echo "==> Whisper model already present: $(whisper_model)" >&2; \
-	else \
-		echo "==> Downloading the whisper model, about 1.6GB" >&2; \
-		mkdir -p "$(whisper_model_dir)"; \
-		curl -fL --progress-bar -o "$(whisper_model)" "$(whisper_model_url)"; \
-	fi
+	$(call fetch_model,$(whisper_model),$(whisper_model_url),the whisper model (about 1.6GB))
 
 vad-model:
-	@if [[ -f "$(vad_model)" ]]; then \
-		echo "==> VAD model already present: $(vad_model)" >&2; \
-	else \
-		echo "==> Downloading the VAD model, about 900KB" >&2; \
-		mkdir -p "$(whisper_model_dir)"; \
-		curl -fL --progress-bar -o "$(vad_model)" "$(vad_model_url)"; \
-	fi
+	$(call fetch_model,$(vad_model),$(vad_model_url),the VAD model (about 900KB))
 
 deps-check:
 	@echo "==> Checking dependencies" >&2
