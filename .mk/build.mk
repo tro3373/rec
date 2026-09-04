@@ -4,8 +4,13 @@ dst := ./rec
 main_pkg := ./cmd/rec
 
 clean:
-	@echo "==> Cleaning" >&2
+	@echo "==> Removing $(dst)" >&2
 	@rm -f $(dst)
+
+# Separate from `clean`, which every build goes through: these caches are shared
+# by every Go module on the machine, so dropping them is never free.
+clean-cache:
+	@echo "==> Dropping the Go build and test caches" >&2
 	@go clean -cache -testcache
 
 build: build-linux-amd
