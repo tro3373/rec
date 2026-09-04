@@ -25,9 +25,15 @@ The transcript and the minutes are written in Japanese. See [Limitations](#limit
 ## Setup
 
 ```sh
-make setup        # system packages, Go tools and the whisper model
-make deps-check   # list whatever is still missing
+make bootstrap              # dependencies, the binary, the unit and an env template
+$EDITOR ~/.config/rec/env
+make service                # enable the unit and start it
 ```
+
+`make bootstrap` is `make setup` followed by `make install`. `install` is not
+wired to `setup` on its own: setup wants `sudo`, re-resolves the Go tools over
+the network, and ends in a check that fails on anything it cannot install
+itself. That cost belongs to the first run, not to every rebuild.
 
 What `make setup` runs:
 
@@ -37,22 +43,23 @@ What `make setup` runs:
 | `deps-go` | golangci-lint, gotestsum, go-test-coverage, goreleaser |
 | `whisper-model` | downloads ggml-large-v3-turbo.bin (about 1.6GB), skipped if present |
 | `vad-model` | downloads ggml-silero-v5.1.2.bin (about 900KB), skipped if present |
-| `deps-check` | reports every missing command and model path |
+| `deps-check` | lists every missing command and model path, and fails if any is missing |
 
-The `claude` CLI has no distro package, so install it yourself.
-Without pacman, `deps-system` prints the package names and stops.
+Running it again is safe: pacman gets `--needed`, both models are skipped once
+the file is there, and `go install` overwrites.
+
+The `claude` CLI has no distro package, so install it yourself. Until you do,
+`deps-check` stops with the missing list and takes `setup` and `bootstrap` down
+with it. Without pacman, `deps-system` prints the package names and stops.
+`make deps-check` on its own reports whatever is still missing.
 
 ## Usage
 
 ```sh
-make build         # writes ./rec
-make install       # copies it to ~/.local/bin/rec
-go build -o rec ./cmd/rec
-
-./rec              # start recording, hit Ctrl-C when the meeting ends
-./rec watch        # keep running, record every call it detects
-./rec -engine gemini
-./rec -version
+rec              # start recording, hit Ctrl-C when the meeting ends
+rec watch        # keep running, record every call it detects
+rec -engine gemini
+rec -version
 ```
 
 ## Output
@@ -90,13 +97,6 @@ stream still counts as a call in progress.
 It has to be a **user** unit. Recording talks to the session's PipeWire socket,
 which a system unit running as root cannot reach.
 
-```sh
-make install    # the binary, the unit, an env template, then daemon-reload
-$EDITOR ~/.config/rec/env
-make service    # enable it and start it
-journalctl --user -u rec -f
-```
-
 `make install` writes the binary to `~/.local/bin`, the unit to
 `~/.config/systemd/user`, and a starter `~/.config/rec/env` only when that file
 does not exist yet, so your own edits survive a reinstall. Override `bin_dir`,
@@ -104,6 +104,10 @@ does not exist yet, so your own edits survive a reinstall. Override `bin_dir`,
 
 After rebuilding, `make install && make service` picks up the new binary:
 `service` restarts the unit rather than leaving the old process running.
+
+```sh
+journalctl --user -u rec -f
+```
 
 `loginctl enable-linger` is not needed. Without a login there is no PipeWire
 session, and so no call to record.
@@ -138,14 +142,26 @@ message over 10 lines into a file on its own, which would leave the post empty.
 
 ## Development
 
-The Makefile is split by concern under `.mk/`.
+```sh
+make build         # writes ./rec
+go build -o rec ./cmd/rec
+make test
+make lint
+make clean-cache   # drop the Go build and test caches
+```
+
+`clean` only removes `./rec`. The Go caches are shared by every module on the
+machine, so `clean-cache` is a separate target rather than part of every build.
+
+`bootstrap` and `all` live in the root `Makefile` because they span the files
+below; everything else is split by concern under `.mk/`.
 
 | File | Contains |
 | --- | --- |
 | `.mk/tools.mk` | dependency install (`setup`, `deps-*`, `whisper-model`) |
 | `.mk/go.mk` | `tidy`, `fmt`, `deps`, `update` |
 | `.mk/lint.mk` | `lint` (diff only), `lint-all` (whole tree) |
-| `.mk/build.mk` | `build`, `run`, `clean` |
+| `.mk/build.mk` | `build`, `run`, `clean`, `clean-cache`, `install`, `service` |
 | `.mk/test.mk` | `test` (gotestsum plus the coverage check) |
 | `.mk/release.mk` | goreleaser wrappers |
 
