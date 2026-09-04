@@ -1,5 +1,7 @@
 # Static analysis.
 
+.PHONY: lint lint-all
+
 lint:
 	@echo "==> Running golangci-lint run" >&2
 	@golangci-lint run

@@ -1,5 +1,7 @@
 # Go module housekeeping.
 
+.PHONY: tidy tidy-go deps update fmt
+
 tidy:
 	@echo "==> Running go mod tidy -v"
 	@go mod tidy -v

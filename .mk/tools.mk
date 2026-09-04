@@ -9,6 +9,9 @@
 # NOTE: the model paths mirror cacheModel in internal/rec/whisper.go.
 #       Keep both in sync, or point REC_WHISPER_MODEL / REC_VAD_MODEL at your own path.
 
+.PHONY: setup deps-system deps-go whisper-model vad-model deps-check \
+	golangci-lint-version
+
 pacman_pkgs := ffmpeg libpulse whisper-cpp
 
 golangci_lint_version := v2.12.2
@@ -22,7 +25,6 @@ go_tools := \
 deps_runtime := ffmpeg pactl whisper-cli claude
 deps_dev := golangci-lint gotestsum go-test-coverage goreleaser
 
-.PHONY: golangci-lint-version
 golangci-lint-version:
 	@echo "$(golangci_lint_version)"
 

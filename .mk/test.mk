@@ -1,5 +1,7 @@
 # Tests and coverage.
 
+.PHONY: test testsum testsum-cover-check
+
 pkg := ./...
 cover_mode := atomic
 cover_out := cover.out

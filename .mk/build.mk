@@ -1,5 +1,9 @@
 # Building and running the binary.
 
+.PHONY: clean clean-cache build run install service \
+	build-linux-arm build-linux-amd build-android-arm build-android-amd \
+	build-darwin-arm build-darwin-amd build-windows-arm build-windows-amd
+
 dst := ./rec
 main_pkg := ./cmd/rec
 

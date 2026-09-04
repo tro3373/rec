@@ -13,6 +13,8 @@ export
 # Feature specific targets live under .mk/
 include $(mkfile_dir)/.mk/*.mk
 
+.PHONY: all bootstrap
+
 all: clean tidy fmt lint build test
 
 # The one thing to run after a clone. `install` is deliberately not wired to

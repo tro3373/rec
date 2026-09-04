@@ -1,5 +1,7 @@
 # goreleaser wrappers.
 
+.PHONY: gr_init gr_check gr_snap gr_snap_skip_publish gr_build
+
 gr_init:
 	@goreleaser init
 gr_check:
