@@ -99,8 +99,11 @@ which a system unit running as root cannot reach.
 
 `make install` writes the binary to `~/.local/bin`, the unit to
 `~/.config/systemd/user`, and a starter `~/.config/rec/env` only when that file
-does not exist yet, so your own edits survive a reinstall. Override `bin_dir`,
-`service_dir` or `env_file` to put them elsewhere.
+does not exist yet, so your own edits survive a reinstall.
+
+The unit hardcodes the first and the last of those, so the `bin_dir` and
+`env_file` variables move the files without the service following them. Edit
+`systemd/rec.service` too if you want them somewhere else.
 
 After rebuilding, `make install && make service` picks up the new binary:
 `service` restarts the unit rather than leaving the old process running.
