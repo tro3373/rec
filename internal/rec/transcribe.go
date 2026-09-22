@@ -111,9 +111,8 @@ func dropRepeats(segs []segment) []segment {
 	out := make([]segment, 0, len(segs))
 	run := 0
 	for i, s := range segs {
-		if i > 0 && s.Text == segs[i-1].Text {
-			run++
-		} else {
+		run++
+		if i == 0 || s.Text != segs[i-1].Text {
 			run = 0
 		}
 		if run < repeatLimit {
