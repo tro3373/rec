@@ -235,6 +235,7 @@ func TestPreflight(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("PATH", filepath.Join(dir, tt.path))
+			t.Setenv("XDG_CONFIG_HOME", dir)
 			if err := preflight(engineGemini, opts); (err != nil) != tt.wantErr {
 				t.Errorf("preflight() error = %v, wantErr %v", err, tt.wantErr)
 			}

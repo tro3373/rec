@@ -11,26 +11,12 @@ import (
 // defaultMinutesCmd generates the minutes when no command is configured.
 const defaultMinutesCmd = "claude -p"
 
-// minutesPromptTmpl is sent to the minutes command, so it is written in the
-// output language. The transcript line format and the speaker labels are
-// filled in from renderTranscript so that they have a single owner.
-const minutesPromptTmpl = `「---」の行より後ろは会議の文字起こしです。
-各行は次の形式です。
-%s
-話者は「%s」か「%s」です。
-これを読みやすい議事録の markdown に整形してください。
-
-- 見出し構成: 概要 / 決定事項 / TODO / 議論の流れ
-- TODO は担当者 (%s / %s) が分かるように書く
-- フィラー (えー、あの 等) と言い直しは落とす
-- 文字起こしに無い内容を足さない
-- markdown 本文だけを出力し、前置きや説明を付けない`
-
-// minutesPrompt fills the template with a real sample of the output format.
-func minutesPrompt() string {
+// minutesPrompt fills the minutes prompt with a real sample of the transcript
+// format, so that the line format and the speaker labels have a single owner.
+func minutesPrompt() (string, error) {
 	sample := strings.TrimSuffix(
 		renderTranscript([]line{{Speaker: speakerSelf, Text: "発言"}}), "\n")
-	return fmt.Sprintf(minutesPromptTmpl, sample, speakerSelf, speakerOther, speakerSelf, speakerOther)
+	return renderPrompt(promptMinutes, minutesPromptData{Format: sample, Self: speakerSelf, Other: speakerOther})
 }
 
 // minutesArgv splits the configured command line. It is split on spaces only,
@@ -42,10 +28,14 @@ func minutesArgv(cmdline string) []string {
 // generateMinutes pipes the prompt and the transcript through the minutes
 // command. Both go through stdin, so the command needs no prompt argument.
 func generateMinutes(cmdline, transcript string) ([]byte, error) {
+	prompt, err := minutesPrompt()
+	if err != nil {
+		return nil, err
+	}
 	argv := minutesArgv(cmdline)
 	// #nosec G204 -- the command line is the user's own configuration.
 	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Stdin = strings.NewReader(minutesPrompt() + "\n---\n" + transcript)
+	cmd.Stdin = strings.NewReader(prompt + "\n---\n" + transcript)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {

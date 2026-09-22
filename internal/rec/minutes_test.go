@@ -26,18 +26,23 @@ func TestMinutesArgv(t *testing.T) {
 }
 
 func TestGenerateMinutes(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	const transcript = "- [00:00:01] 自分: こんにちは\n"
 	out, err := generateMinutes("cat", transcript)
 	if err != nil {
 		t.Fatalf("generateMinutes() error = %v", err)
 	}
-	if want := minutesPrompt() + "\n---\n" + transcript; string(out) != want {
+	prompt, err := minutesPrompt()
+	if err != nil {
+		t.Fatalf("minutesPrompt() error = %v", err)
+	}
+	if want := prompt + "\n---\n" + transcript; string(out) != want {
 		t.Errorf("stdin = %q, want %q", out, want)
 	}
 	if _, err := generateMinutes("false", transcript); err == nil {
 		t.Error("generateMinutes() with a failing command: error = nil")
 	}
-	if strings.Contains(minutesPrompt(), "%") {
-		t.Errorf("minutesPrompt() has an unfilled verb: %q", minutesPrompt())
+	if !strings.Contains(prompt, "- [00:00:00] 自分: 発言") {
+		t.Errorf("minutesPrompt() lacks the sample line: %q", prompt)
 	}
 }

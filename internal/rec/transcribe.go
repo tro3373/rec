@@ -32,11 +32,27 @@ func preflight(e engine, opts Options) error {
 	if err := preflightEngine(e, opts); err != nil {
 		return err
 	}
+	if err := preflightPrompts(e); err != nil {
+		return err
+	}
 	bin := minutesArgv(opts.MinutesCmd)[0]
 	if _, err := exec.LookPath(bin); err != nil {
 		return fmt.Errorf("cannot find %s, which generates the minutes: %w", bin, err)
 	}
 	return nil
+}
+
+// preflightPrompts renders the prompts this run will use, so that a broken
+// custom prompt shows up now rather than after the meeting.
+func preflightPrompts(e engine) error {
+	if _, err := minutesPrompt(); err != nil {
+		return err
+	}
+	if e != engineGemini {
+		return nil
+	}
+	_, err := renderPrompt(promptTranscribe, transcribePromptData{Speaker: speakerSelf})
+	return err
 }
 
 // preflightEngine verifies what the transcription engine needs.

@@ -10,7 +10,8 @@ it into markdown minutes.
 - Attributes every utterance to either you or the other side
 - `rec watch` detects a call starting on its own and records it unattended
 
-The transcript and the minutes are written in Japanese. See [Limitations](#limitations).
+The transcript and the minutes are written in Japanese by default. See
+[Custom prompts](#custom-prompts) and [Limitations](#limitations).
 
 ## Requirements
 
@@ -134,6 +135,25 @@ rec -minutes-cmd "ollama run gemma3"  # a local model
 
 `rec` checks that the command exists before it starts recording.
 
+## Custom prompts
+
+The built-in prompts are in [`internal/rec/prompts/`](internal/rec/prompts).
+A file of the same name in `~/.config/rec/prompts/` (`$XDG_CONFIG_HOME` is
+honored) replaces one of them.
+
+| File | Sent to | Variables |
+| --- | --- | --- |
+| `minutes.md` | the `-minutes-cmd` command | `{{.Format}}` a sample transcript line, `{{.Self}}`, `{{.Other}}` |
+| `transcribe.md` | Gemini, once per track | `{{.Speaker}}` the track's speaker |
+
+They are Go `text/template` files. `rec` renders them before it starts
+recording, so a broken template or an unknown variable fails right away.
+
+```sh
+mkdir -p ~/.config/rec/prompts
+cp internal/rec/prompts/minutes.md ~/.config/rec/prompts/
+```
+
 ## Posting to Slack
 
 `-slack` posts the minutes when the run is over, through the `slk` CLI, which
@@ -187,7 +207,8 @@ below; everything else is split by concern under `.mk/`.
 
 ## Limitations
 
-- Output is Japanese only. The prompts and the speaker labels are hardcoded.
+- The speaker labels (`自分` / `相手`) are hardcoded. A custom prompt changes the
+  language of the minutes, but the transcript keeps those labels.
 - Gemini receives the audio inline, so a long meeting exceeds the 18MB limit.
   Use whisper in that case.
 - The recording devices are fixed at startup. Switching devices mid-meeting

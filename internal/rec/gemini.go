@@ -20,11 +20,6 @@ const (
 	geminiInlineLimit = 18 << 20
 )
 
-// geminiPromptTmpl is sent to the model, so it is written in the output language.
-const geminiPromptTmpl = `この音声は %s の発言です。日本語で文字起こししてください。
-発言のまとまりごとに、音声先頭からの開始時刻 (HH:MM:SS) と本文を返してください。
-相槌や無音は含めないでください。`
-
 // geminiSegment is one chunk returned by the model.
 // The field names must match the responseSchema in geminiGenConfig.
 type geminiSegment struct {
@@ -68,7 +63,11 @@ func transcribeGeminiTrack(ctx context.Context, t track, model, apiKey string) (
 	if err != nil {
 		return nil, err
 	}
-	body, err := json.Marshal(geminiRequest(t.Speaker, audio))
+	prompt, err := renderPrompt(promptTranscribe, transcribePromptData{Speaker: t.Speaker})
+	if err != nil {
+		return nil, err
+	}
+	body, err := json.Marshal(geminiRequest(prompt, audio))
 	if err != nil {
 		return nil, fmt.Errorf("cannot build the Gemini request: %w", err)
 	}
@@ -102,11 +101,11 @@ func compressForUpload(wav string) ([]byte, error) {
 }
 
 // geminiRequest builds a request that returns one track as segment JSON.
-func geminiRequest(speaker string, audio []byte) map[string]any {
+func geminiRequest(prompt string, audio []byte) map[string]any {
 	return map[string]any{
 		"contents": []any{map[string]any{
 			"parts": []any{
-				map[string]any{"text": fmt.Sprintf(geminiPromptTmpl, speaker)},
+				map[string]any{"text": prompt},
 				map[string]any{"inline_data": map[string]any{
 					"mime_type": geminiAudioMime,
 					"data":      base64.StdEncoding.EncodeToString(audio),
