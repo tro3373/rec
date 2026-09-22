@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
 )
 
 // engine selects where transcription runs.
@@ -25,9 +26,20 @@ func parseEngine(s string) (engine, error) {
 	return "", fmt.Errorf("unknown transcription engine: %s (whisper|gemini)", s)
 }
 
-// preflight verifies the engine prerequisites before recording starts,
+// preflight verifies the prerequisites before recording starts,
 // so a whole meeting is not recorded only to fail afterwards.
 func preflight(e engine, opts Options) error {
+	if err := preflightEngine(e, opts); err != nil {
+		return err
+	}
+	if _, err := exec.LookPath(minutesBin); err != nil {
+		return fmt.Errorf("cannot find %s, which generates the minutes: %w", minutesBin, err)
+	}
+	return nil
+}
+
+// preflightEngine verifies what the transcription engine needs.
+func preflightEngine(e engine, opts Options) error {
 	if e == engineGemini {
 		if opts.GeminiAPIKey == "" {
 			return errors.New("GEMINI_API_KEY is not set")

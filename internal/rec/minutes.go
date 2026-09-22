@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// minutesBin generates the minutes from the transcript.
+const minutesBin = "claude"
+
 // minutesPromptTmpl is sent to claude, so it is written in the output language.
 // The transcript line format and the speaker labels are filled in from
 // renderTranscript so that they have a single owner.
@@ -32,7 +35,7 @@ func minutesPrompt() string {
 // generateMinutes pipes the transcript through claude to produce the minutes.
 func generateMinutes(transcript string) ([]byte, error) {
 	// #nosec G204 -- the argument is a fixed prompt built from package constants.
-	cmd := exec.Command("claude", "-p", minutesPrompt())
+	cmd := exec.Command(minutesBin, "-p", minutesPrompt())
 	cmd.Stdin = strings.NewReader(transcript)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()

@@ -1,6 +1,8 @@
 package rec
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -204,6 +206,37 @@ func TestDropRepeats(t *testing.T) {
 			got := dropRepeats(tt.segs)
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("dropRepeats() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPreflight(t *testing.T) {
+	opts := Options{GeminiAPIKey: "key"}
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{name: "議事録コマンドがある場合_通ること", path: "bin", wantErr: false},
+		{name: "議事録コマンドが無い場合_エラーになること", path: "empty", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			bin := filepath.Join(dir, "bin")
+			if err := os.MkdirAll(filepath.Join(dir, "empty"), 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.MkdirAll(bin, 0o750); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(bin, minutesBin), []byte("#!/bin/sh\n"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", filepath.Join(dir, tt.path))
+			if err := preflight(engineGemini, opts); (err != nil) != tt.wantErr {
+				t.Errorf("preflight() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
