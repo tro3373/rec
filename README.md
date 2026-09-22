@@ -169,7 +169,8 @@ For example, posting the summary section to a Slack
 #!/bin/sh
 # ~/.local/bin/rec-post
 set -eu
-awk '/^#+ .*概要/ { f = 1; print; next } /^#/ && f { exit } f' "$1/minutes.md" |
+summary=$(awk '/^#+ .*概要/ { f = 1; print; next } /^#/ && f { exit } f' "$1/minutes.md")
+printf '%s\n' "${summary:-議事録ができました}" |
   jq -Rs '{text: .}' |
   curl -fsS -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
 ```
@@ -186,6 +187,9 @@ one `KEY=VALUE` per line, with `#` comments and optional quotes around the
 value. [`systemd/env.example`](systemd/env.example) is the template.
 
 A variable set in the shell wins over the file, and a flag wins over both.
+Every variable in the file is exported, not only the ones below, so the
+minutes and post commands see them too. A post script can keep its own
+settings, such as a webhook URL, in the same file.
 
 ## Options
 
