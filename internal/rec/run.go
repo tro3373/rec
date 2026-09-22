@@ -17,8 +17,7 @@ type Options struct {
 	GeminiModel  string // Gemini model name.
 	GeminiAPIKey string // Gemini API key.
 	MinutesCmd   string // Command that turns the prompt and transcript on stdin into minutes. Empty means claude -p.
-	SlackPost    bool   // Post the minutes to Slack once the run is over.
-	SlackChannel string // Slack channel override. Empty means the slk config.
+	PostCmd      string // Command run with the output directory once the minutes exist. Empty means none.
 }
 
 // Run records a meeting and produces the minutes.
@@ -82,11 +81,11 @@ func runOnce(ctx context.Context, e engine, opts Options, banner string, rec fun
 	}
 	fmt.Fprintf(os.Stderr, "done: %s\n", minutesPath)
 
-	if !opts.SlackPost {
+	if opts.PostCmd == "" {
 		return nil
 	}
-	// The minutes are already on disk, so a failed post must not fail the run.
-	if err := postToSlack(opts, minutesPath, minutes); err != nil {
+	// The minutes are already on disk, so a failed post command must not fail the run.
+	if err := runPostCmd(opts.PostCmd, dir); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 	}
 	return nil

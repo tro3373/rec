@@ -212,14 +212,16 @@ func TestDropRepeats(t *testing.T) {
 }
 
 func TestPreflight(t *testing.T) {
-	opts := Options{GeminiAPIKey: "key"}
 	tests := []struct {
 		name    string
 		path    string
+		postCmd string
 		wantErr bool
 	}{
 		{name: "議事録コマンドがある場合_通ること", path: "bin", wantErr: false},
 		{name: "議事録コマンドが無い場合_エラーになること", path: "empty", wantErr: true},
+		{name: "後処理コマンドがある場合_通ること", path: "bin", postCmd: "claude arg", wantErr: false},
+		{name: "後処理コマンドが無い場合_エラーになること", path: "bin", postCmd: "missing-post", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -236,6 +238,7 @@ func TestPreflight(t *testing.T) {
 			}
 			t.Setenv("PATH", filepath.Join(dir, tt.path))
 			t.Setenv("XDG_CONFIG_HOME", dir)
+			opts := Options{GeminiAPIKey: "key", PostCmd: tt.postCmd}
 			if err := preflight(engineGemini, opts); (err != nil) != tt.wantErr {
 				t.Errorf("preflight() error = %v, wantErr %v", err, tt.wantErr)
 			}

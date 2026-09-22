@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // engine selects where transcription runs.
@@ -35,9 +36,19 @@ func preflight(e engine, opts Options) error {
 	if err := preflightPrompts(e); err != nil {
 		return err
 	}
-	bin := minutesArgv(opts.MinutesCmd)[0]
+	if err := requireCmd(minutesArgv(opts.MinutesCmd)[0], "the minutes command"); err != nil {
+		return err
+	}
+	if opts.PostCmd == "" {
+		return nil
+	}
+	return requireCmd(strings.Fields(opts.PostCmd)[0], "the post command")
+}
+
+// requireCmd fails unless bin can be run.
+func requireCmd(bin, role string) error {
 	if _, err := exec.LookPath(bin); err != nil {
-		return fmt.Errorf("cannot find %s, which generates the minutes: %w", bin, err)
+		return fmt.Errorf("cannot find %s, %s: %w", bin, role, err)
 	}
 	return nil
 }

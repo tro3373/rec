@@ -44,12 +44,13 @@ func main() {
 	flag.StringVar(&opts.VADModel, "vad-model", "", "silero VAD model file (default REC_VAD_MODEL or the user cache dir)")
 	flag.StringVar(&opts.GeminiModel, "gemini-model", "gemini-2.5-flash", "Gemini model name")
 	flag.StringVar(&opts.MinutesCmd, "minutes-cmd", os.Getenv("REC_MINUTES_CMD"), "command that reads the prompt and transcript on stdin and prints the minutes (default \"claude -p\")")
-	flag.BoolVar(&opts.SlackPost, "slack", os.Getenv("REC_SLACK") != "", "post the minutes to Slack with slk")
-	flag.StringVar(&opts.SlackChannel, "slack-channel", os.Getenv("REC_SLACK_CHANNEL"), "Slack channel to post to (default: the slk config)")
+	flag.StringVar(&opts.PostCmd, "post-cmd", os.Getenv("REC_POST_CMD"), "command run with the output directory once the minutes are written")
 	if err := flag.CommandLine.Parse(args); err != nil {
 		os.Exit(2)
 	}
 
+	// A blank post command means none, so it never reaches rec as an empty argv.
+	opts.PostCmd = strings.TrimSpace(opts.PostCmd)
 	if *showVersion {
 		fmt.Println(version)
 		return

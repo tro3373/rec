@@ -21,7 +21,6 @@ The transcript and the minutes are written in Japanese by default. See
 | Transcription (default) | `whisper-cli` plus a transcription model and a VAD model |
 | Transcription (alternative) | `GEMINI_API_KEY` |
 | Minutes | the `claude` CLI, or any command set with `-minutes-cmd` |
-| Posting to Slack (optional) | the `slk` CLI |
 
 ## Setup
 
@@ -117,7 +116,9 @@ journalctl --user -u rec -f
 session, and so no call to record.
 
 The unit sets `PATH` explicitly. The systemd user manager does not inherit the
-login shell's `PATH`, and `rec` shells out to `claude` and `slk`.
+login shell's `PATH`, and `rec` shells out to the minutes and post commands.
+If they live elsewhere, set `PATH` in `~/.config/rec/env`, which overrides the
+unit's.
 
 ## Generating the minutes
 
@@ -154,17 +155,28 @@ mkdir -p ~/.config/rec/prompts
 cp internal/rec/prompts/minutes.md ~/.config/rec/prompts/
 ```
 
-## Posting to Slack
+## Running a command afterwards
 
-`-slack` posts the minutes when the run is over, through the `slk` CLI, which
-already owns the token and the channel.
+`-post-cmd` runs a command once `minutes.md` is written, with the output
+directory as its last argument. Use it to post the minutes to chat, copy them
+somewhere, or anything else. A failing command only prints a warning, since the
+minutes are already on disk.
 
-- the summary section becomes the message
-- the whole `minutes.md` is attached as a file, since Slack truncates a post at
-  40,000 characters and recommends a snippet for anything long
+For example, posting the summary section to a Slack
+[incoming webhook](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks):
 
-`rec` calls `slk` with `--no-auto-upload`. Without that flag `slk` turns any
-message over 10 lines into a file on its own, which would leave the post empty.
+```sh
+#!/bin/sh
+# ~/.local/bin/rec-post
+set -eu
+awk '/^#+ .*概要/ { f = 1; print; next } /^#/ && f { exit } f' "$1/minutes.md" |
+  jq -Rs '{text: .}' |
+  curl -fsS -H 'Content-Type: application/json' -d @- "$SLACK_WEBHOOK_URL"
+```
+
+```sh
+rec -post-cmd rec-post
+```
 
 ## Options
 
@@ -176,8 +188,7 @@ message over 10 lines into a file on its own, which would leave the post empty.
 | `-vad-model` | `REC_VAD_MODEL` | `$XDG_CACHE_HOME/whisper.cpp/ggml-silero-v5.1.2.bin` | silero VAD model file |
 | `-gemini-model` | - | `gemini-2.5-flash` | Gemini model name |
 | `-minutes-cmd` | `REC_MINUTES_CMD` | `claude -p` | command that writes the minutes |
-| `-slack` | `REC_SLACK` | off | post the minutes to Slack with `slk` |
-| `-slack-channel` | `REC_SLACK_CHANNEL` | the `slk` config | Slack channel to post to |
+| `-post-cmd` | `REC_POST_CMD` | none | command run with the output directory afterwards |
 | `-version` | - | - | print the version and exit |
 
 ## Development
