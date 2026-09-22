@@ -32,8 +32,9 @@ func preflight(e engine, opts Options) error {
 	if err := preflightEngine(e, opts); err != nil {
 		return err
 	}
-	if _, err := exec.LookPath(minutesBin); err != nil {
-		return fmt.Errorf("cannot find %s, which generates the minutes: %w", minutesBin, err)
+	bin := minutesArgv(opts.MinutesCmd)[0]
+	if _, err := exec.LookPath(bin); err != nil {
+		return fmt.Errorf("cannot find %s, which generates the minutes: %w", bin, err)
 	}
 	return nil
 }

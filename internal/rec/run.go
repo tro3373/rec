@@ -16,6 +16,7 @@ type Options struct {
 	VADModel     string // Path to the silero VAD model. Empty means the default.
 	GeminiModel  string // Gemini model name.
 	GeminiAPIKey string // Gemini API key.
+	MinutesCmd   string // Command that turns the prompt and transcript on stdin into minutes. Empty means claude -p.
 	SlackPost    bool   // Post the minutes to Slack once the run is over.
 	SlackChannel string // Slack channel override. Empty means the slk config.
 }
@@ -71,7 +72,7 @@ func runOnce(ctx context.Context, e engine, opts Options, banner string, rec fun
 	}
 
 	fmt.Fprintln(os.Stderr, "generating the minutes")
-	minutes, err := generateMinutes(transcript)
+	minutes, err := generateMinutes(opts.MinutesCmd, transcript)
 	if err != nil {
 		return fmt.Errorf("%w\n  the transcript is kept at %s", err, transcriptPath)
 	}

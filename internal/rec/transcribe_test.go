@@ -231,7 +231,7 @@ func TestPreflight(t *testing.T) {
 			if err := os.MkdirAll(bin, 0o750); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(bin, minutesBin), []byte("#!/bin/sh\n"), 0o700); err != nil {
+			if err := os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\n"), 0o700); err != nil {
 				t.Fatal(err)
 			}
 			t.Setenv("PATH", filepath.Join(dir, tt.path))

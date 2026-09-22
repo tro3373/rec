@@ -43,6 +43,7 @@ func main() {
 	flag.StringVar(&opts.WhisperModel, "model", "", "whisper model file (default REC_WHISPER_MODEL or the user cache dir)")
 	flag.StringVar(&opts.VADModel, "vad-model", "", "silero VAD model file (default REC_VAD_MODEL or the user cache dir)")
 	flag.StringVar(&opts.GeminiModel, "gemini-model", "gemini-2.5-flash", "Gemini model name")
+	flag.StringVar(&opts.MinutesCmd, "minutes-cmd", os.Getenv("REC_MINUTES_CMD"), "command that reads the prompt and transcript on stdin and prints the minutes (default \"claude -p\")")
 	flag.BoolVar(&opts.SlackPost, "slack", os.Getenv("REC_SLACK") != "", "post the minutes to Slack with slk")
 	flag.StringVar(&opts.SlackChannel, "slack-channel", os.Getenv("REC_SLACK_CHANNEL"), "Slack channel to post to (default: the slk config)")
 	if err := flag.CommandLine.Parse(args); err != nil {

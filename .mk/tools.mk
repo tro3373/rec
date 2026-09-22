@@ -4,7 +4,8 @@
 #   ffmpeg      records the two tracks
 #   pactl       resolves the default input and monitor sources (libpulse)
 #   whisper-cli local transcription (whisper-cpp), only for -engine whisper
-#   claude      generates the minutes; install it yourself, no distro package
+#   claude      generates the minutes unless -minutes-cmd says otherwise;
+#               install it yourself, no distro package
 #
 # NOTE: the model paths mirror cacheModel in internal/rec/whisper.go.
 #       Keep both in sync, or point REC_WHISPER_MODEL / REC_VAD_MODEL at your own path.

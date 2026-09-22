@@ -19,7 +19,7 @@ The transcript and the minutes are written in Japanese. See [Limitations](#limit
 | Recording | PipeWire or PulseAudio, `ffmpeg`, `pactl` |
 | Transcription (default) | `whisper-cli` plus a transcription model and a VAD model |
 | Transcription (alternative) | `GEMINI_API_KEY` |
-| Minutes | the `claude` CLI |
+| Minutes | the `claude` CLI, or any command set with `-minutes-cmd` |
 | Posting to Slack (optional) | the `slk` CLI |
 
 ## Setup
@@ -118,6 +118,22 @@ session, and so no call to record.
 The unit sets `PATH` explicitly. The systemd user manager does not inherit the
 login shell's `PATH`, and `rec` shells out to `claude` and `slk`.
 
+## Generating the minutes
+
+`-engine` only picks the transcription. The minutes always come from the
+`-minutes-cmd` command, `claude -p` unless set, whichever engine ran.
+
+The command gets the prompt, a `---` line and the transcript on stdin, and
+prints the markdown minutes on stdout. The command line is split on spaces
+only, so put anything that needs quoting in a script.
+
+```sh
+rec -minutes-cmd "gemini"             # Gemini CLI
+rec -minutes-cmd "ollama run gemma3"  # a local model
+```
+
+`rec` checks that the command exists before it starts recording.
+
 ## Posting to Slack
 
 `-slack` posts the minutes when the run is over, through the `slk` CLI, which
@@ -139,6 +155,7 @@ message over 10 lines into a file on its own, which would leave the post empty.
 | `-model` | `REC_WHISPER_MODEL` | `$XDG_CACHE_HOME/whisper.cpp/ggml-large-v3-turbo.bin` | whisper model file |
 | `-vad-model` | `REC_VAD_MODEL` | `$XDG_CACHE_HOME/whisper.cpp/ggml-silero-v5.1.2.bin` | silero VAD model file |
 | `-gemini-model` | - | `gemini-2.5-flash` | Gemini model name |
+| `-minutes-cmd` | `REC_MINUTES_CMD` | `claude -p` | command that writes the minutes |
 | `-slack` | `REC_SLACK` | off | post the minutes to Slack with `slk` |
 | `-slack-channel` | `REC_SLACK_CHANNEL` | the `slk` config | Slack channel to post to |
 | `-version` | - | - | print the version and exit |

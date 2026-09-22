@@ -1,19 +1,20 @@
 package rec
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 )
 
-// minutesBin generates the minutes from the transcript.
-const minutesBin = "claude"
+// defaultMinutesCmd generates the minutes when no command is configured.
+const defaultMinutesCmd = "claude -p"
 
-// minutesPromptTmpl is sent to claude, so it is written in the output language.
-// The transcript line format and the speaker labels are filled in from
-// renderTranscript so that they have a single owner.
-const minutesPromptTmpl = `標準入力は会議の文字起こしです。
+// minutesPromptTmpl is sent to the minutes command, so it is written in the
+// output language. The transcript line format and the speaker labels are
+// filled in from renderTranscript so that they have a single owner.
+const minutesPromptTmpl = `「---」の行より後ろは会議の文字起こしです。
 各行は次の形式です。
 %s
 話者は「%s」か「%s」です。
@@ -32,15 +33,23 @@ func minutesPrompt() string {
 	return fmt.Sprintf(minutesPromptTmpl, sample, speakerSelf, speakerOther, speakerSelf, speakerOther)
 }
 
-// generateMinutes pipes the transcript through claude to produce the minutes.
-func generateMinutes(transcript string) ([]byte, error) {
-	// #nosec G204 -- the argument is a fixed prompt built from package constants.
-	cmd := exec.Command(minutesBin, "-p", minutesPrompt())
-	cmd.Stdin = strings.NewReader(transcript)
+// minutesArgv splits the configured command line. It is split on spaces only,
+// so anything that needs quoting belongs in a wrapper script.
+func minutesArgv(cmdline string) []string {
+	return strings.Fields(cmp.Or(strings.TrimSpace(cmdline), defaultMinutesCmd))
+}
+
+// generateMinutes pipes the prompt and the transcript through the minutes
+// command. Both go through stdin, so the command needs no prompt argument.
+func generateMinutes(cmdline, transcript string) ([]byte, error) {
+	argv := minutesArgv(cmdline)
+	// #nosec G204 -- the command line is the user's own configuration.
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Stdin = strings.NewReader(minutesPrompt() + "\n---\n" + transcript)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("cannot generate the minutes with claude: %w", err)
+		return nil, fmt.Errorf("cannot generate the minutes with %s: %w", argv[0], err)
 	}
 	return out, nil
 }
