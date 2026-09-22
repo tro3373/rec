@@ -34,8 +34,22 @@ func splitCommand(args []string) (string, []string) {
 	return args[0], args[1:]
 }
 
+// loadSettings exports the variables of the env file.
+func loadSettings() error {
+	path, err := envFile()
+	if err != nil {
+		return err
+	}
+	return loadEnvFile(path)
+}
+
 func main() {
 	name, args := splitCommand(os.Args[1:])
+	// The flag defaults below read the environment, so the file goes in first.
+	if err := loadSettings(); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	opts := rec.Options{GeminiAPIKey: os.Getenv("GEMINI_API_KEY")}
 	flag.StringVar(&opts.OutRoot, "o", cmp.Or(os.Getenv("REC_OUT_DIR"), "out"), "output directory for the artifacts")

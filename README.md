@@ -101,9 +101,10 @@ which a system unit running as root cannot reach.
 `~/.config/systemd/user`, and a starter `~/.config/rec/env` only when that file
 does not exist yet, so your own edits survive a reinstall.
 
-The unit hardcodes the first and the last of those, so the `bin_dir` and
-`env_file` variables move the files without the service following them. Edit
-`systemd/rec.service` too if you want them somewhere else.
+The unit hardcodes the binary path, so the `bin_dir` variable moves the binary
+without the service following it. Edit `systemd/rec.service` too if you want it
+somewhere else. `rec` itself looks for the env file, so `env_file` only changes
+where the template is written.
 
 After rebuilding, `make install && make service` picks up the new binary:
 `service` restarts the unit rather than leaving the old process running.
@@ -117,8 +118,7 @@ session, and so no call to record.
 
 The unit sets `PATH` explicitly. The systemd user manager does not inherit the
 login shell's `PATH`, and `rec` shells out to the minutes and post commands.
-If they live elsewhere, set `PATH` in `~/.config/rec/env`, which overrides the
-unit's.
+Give those commands an absolute path when they live elsewhere.
 
 ## Generating the minutes
 
@@ -177,6 +177,15 @@ awk '/^#+ .*概要/ { f = 1; print; next } /^#/ && f { exit } f' "$1/minutes.md"
 ```sh
 rec -post-cmd rec-post
 ```
+
+## Settings
+
+Every run reads `~/.config/rec/env` (`$XDG_CONFIG_HOME` is honored), a manual
+`rec` as much as the service. It holds the variables in the Env column below,
+one `KEY=VALUE` per line, with `#` comments and optional quotes around the
+value. [`systemd/env.example`](systemd/env.example) is the template.
+
+A variable set in the shell wins over the file, and a flag wins over both.
 
 ## Options
 

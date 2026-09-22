@@ -47,7 +47,7 @@ run:
 # Override any of these to install somewhere else.
 bin_dir := $(HOME)/.local/bin
 service_dir := $(HOME)/.config/systemd/user
-env_file := $(HOME)/.config/rec/env
+env_file := $(or $(XDG_CONFIG_HOME),$(HOME)/.config)/rec/env
 
 # Everything the service needs, short of starting it. See `service`.
 install: build

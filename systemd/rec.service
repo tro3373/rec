@@ -8,10 +8,8 @@ PartOf=graphical-session.target
 Type=simple
 WorkingDirectory=%h
 # The user manager does not inherit the login shell's PATH, and rec shells out
-# to the minutes and post commands. A PATH in the env file below overrides this.
+# to the minutes and post commands. rec reads ~/.config/rec/env on its own.
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
-# GEMINI_API_KEY, REC_OUT_DIR, REC_POST_CMD and friends live here.
-EnvironmentFile=-%h/.config/rec/env
 ExecStart=%h/.local/bin/rec watch
 Restart=always
 RestartSec=10
