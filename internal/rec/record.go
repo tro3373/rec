@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 )
 
 const ffmpegBin = "ffmpeg"
@@ -91,6 +92,11 @@ func record(ctx context.Context, ts []track) error {
 	cmds := make([]*exec.Cmd, 0, len(ts))
 	for _, t := range ts {
 		cmd := ffmpegCmd(ffmpegArgs(t)...)
+		// A terminal's Ctrl-C would reach ffmpeg on top of the SIGINT from
+		// stopAll, and a second SIGINT makes ffmpeg exit without writing what
+		// it still buffers: up to 256KiB, the last 8 seconds of the meeting.
+		// Its own process group leaves stopAll the only sender.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		if err := cmd.Start(); err != nil {
 			stopAll(cmds)
 			return fmt.Errorf("cannot start recording %s (source=%s): %w", t.Speaker, t.Source, err)
