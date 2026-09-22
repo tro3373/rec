@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+# rv - drive a real rec binary against private virtual audio devices.
+#
+# Every run gets an id. Its disposable state (binary, config dir, pactl shim,
+# tmux socket, null sink modules) lives under $XDG_RUNTIME_DIR/rec-verify/<id>
+# and is removed by `down`. Its evidence lives under <repo>/out/verify/<id>
+# (gitignored) and is never removed by this script.
+#
+# See ../SKILL.md for the workflow. `rv help` lists the sub-commands.
+
+# init sets the globals every sub-command shares.
+init() {
+  local script_dir
+  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  repo=$(git -C "$script_dir" rev-parse --show-toplevel)
+  state_root=${XDG_RUNTIME_DIR:-/tmp}/rec-verify
+  real_pactl=$(command -v pactl)
+  whisper_model=${XDG_CACHE_HOME:-$HOME/.cache}/whisper.cpp/ggml-large-v3-turbo.bin
+  vad_model=${XDG_CACHE_HOME:-$HOME/.cache}/whisper.cpp/ggml-silero-v5.1.2.bin
+}
+
+die() {
+  echo "rv: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+rv up                         build rec, create sinks and dirs; prints the run id
+rv doctor <id>                read-only health check of the run
+rv start  <id> [--real-devices] [rec args...]
+                              run rec in a private tmux session
+rv say    <id> self|other <text>
+                              speak <text> (kana) into one track, logged to said.txt
+rv call   <id> <app>          open a mic stream that looks like <app> (slack|zoom|chrome)
+rv hangup <id>                close the stream opened by `call`
+rv stop   <id>                press Ctrl-C in the rec pane
+rv wait   <id> <regex> [sec]  wait until the pane matches <regex> (default 300s);
+                              rec exited once it shows 'Pane is dead (status N'
+rv capture <id> <name>        save the pane text to <evidence>/pane-<name>.txt
+rv path   <id> state|config|evidence|out
+rv down   <id>                tear the run down; evidence is kept
+EOF
+}
+
+# load <id> sets the run's paths and fails if the run does not exist.
+load() {
+  [[ -n ${1:-} ]] || die "run id required"
+  id=$1
+  state=$state_root/$id
+  [[ -f $state/run.env ]] || die "no such run: $id (looked in $state)"
+  # shellcheck source=/dev/null
+  source "$state/run.env"
+}
+
+tm() {
+  command tmux -L "rv-$id" "$@"
+}
+
+pane() {
+  tm capture-pane -p -J -S - -t rec 2>/dev/null
+}
+
+cmd_up() {
+  for c in go ffmpeg whisper-cli espeak-ng paplay parecord jq tmux git; do
+    command -v "$c" >/dev/null || die "missing command: $c"
+  done
+  [[ -f $whisper_model ]] || die "missing $whisper_model (make whisper-model)"
+  [[ -f $vad_model ]] || die "missing $vad_model (make vad-model)"
+
+  id=$(date +%Y%m%d-%H%M%S)-$$
+  state=$state_root/$id
+  evidence=$repo/out/verify/$id
+  mkdir -p "$state/bin" "$state/shim" "$state/config" "$evidence"
+
+  version=$(git -C "$repo" describe --always --dirty)
+  echo "rv: building rec $version" >&2
+  (cd "$repo" && go build -trimpath -ldflags "-X main.version=$version" -o "$state/bin/rec" ./cmd/rec)
+
+  # Remember the user's defaults so doctor can prove they were never touched.
+  defaults=$("$real_pactl" -f json info 2>/dev/null | jq -r '.default_sink_name + " " + .default_source_name')
+
+  self_sink=rv_${id//-/_}_self
+  other_sink=rv_${id//-/_}_other
+  self_mod=$("$real_pactl" load-module module-null-sink "sink_name=$self_sink" "sink_properties=device.description=$self_sink")
+  other_mod=$("$real_pactl" load-module module-null-sink "sink_name=$other_sink" "sink_properties=device.description=$other_sink")
+
+  # rec takes its devices from `pactl info` defaults, which are global to the
+  # session. The shim answers that one query with this run's sinks instead;
+  # every other pactl call (list sinks, source-outputs, subscribe) is real.
+  cat >"$state/shim/pactl" <<EOF
+#!/usr/bin/env bash
+if [[ "\$*" == "-f json info" ]]; then
+  "$real_pactl" -f json info | jq --arg s "$self_sink.monitor" --arg o "$other_sink" \\
+    '.default_source_name = \$s | .default_sink_name = \$o'
+  exit "\${PIPESTATUS[0]}"
+fi
+exec "$real_pactl" "\$@"
+EOF
+
+  # Minutes stub: keeps what rec sent, answers with a fixed markdown.
+  cat >"$state/bin/rv-minutes" <<EOF
+#!/usr/bin/env bash
+cat >"$evidence/minutes-stdin.txt"
+printf '# 議事録 (rv stub)\n\n## 概要\n\nrv-minutes-stub\n'
+EOF
+  # Post stub: keeps its argv and the directory it was pointed at.
+  cat >"$state/bin/rv-post" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >"$evidence/post-argv.txt"
+ls -1 "\${@: -1}" >"$evidence/post-dir-listing.txt"
+EOF
+  chmod +x "$state/shim/pactl" "$state/bin/rv-minutes" "$state/bin/rv-post"
+
+  # The pane outlives rec so its last screen can still be captured.
+  printf 'set -g remain-on-exit on\nset -g history-limit 100000\n' >"$state/tmux.conf"
+
+  cat >"$state/run.env" <<EOF
+evidence=$evidence
+version=$version
+defaults="$defaults"
+self_sink=$self_sink
+other_sink=$other_sink
+self_mod=$self_mod
+other_mod=$other_mod
+EOF
+  echo "$id"
+}
+
+cmd_doctor() {
+  load "$@"
+  local ok=1
+  check() {
+    if ! eval "$2" >/dev/null 2>&1; then
+      printf '  FAIL  %s\n' "$1"
+      ok=0
+      return
+    fi
+    printf '  ok    %s\n' "$1"
+  }
+  echo "run $id"
+  check "binary built ($version)" "[[ \$('$state/bin/rec' -version) == '$version' ]]"
+  local head
+  head=$(git -C "$repo" describe --always --dirty)
+  [[ $head == "$version" ]] || printf '  WARN  tree is now %s, binary is %s: run a new rv up\n' "$head" "$version"
+  check "user defaults untouched ($defaults)" \
+    "[[ \$('$real_pactl' -f json info 2>/dev/null | jq -r '.default_sink_name + \" \" + .default_source_name') == '$defaults' ]]"
+  check "sink $self_sink present" "'$real_pactl' list short sinks | grep -qw '$self_sink'"
+  check "sink $other_sink present" "'$real_pactl' list short sinks | grep -qw '$other_sink'"
+  check "shim resolves this run's sinks" \
+    "PATH='$state/shim':\$PATH pactl -f json info 2>/dev/null | jq -e '.default_sink_name == \"$other_sink\"'"
+  check "evidence dir $evidence" "[[ -d '$evidence' ]]"
+  printf '  info  user rec.service: %s\n' "$(systemctl --user is-active rec 2>/dev/null || true)"
+  local last='no rec pane (not started, or run ended)'
+  tm has-session -t rec 2>/dev/null && last="rec pane: $(pane | grep -v '^$' | tail -1)"
+  printf '  info  %s\n' "$last"
+  ((ok))
+}
+
+cmd_start() {
+  load "$1"
+  shift
+  local path=$state/shim:$state/bin:$PATH
+  if [[ ${1:-} == --real-devices ]]; then
+    path=$state/bin:$PATH
+    shift
+  fi
+  tm has-session -t rec 2>/dev/null && die "run $id already has a rec pane; rv down it first"
+  # Nothing from the user's shell or ~/.config/rec reaches rec: the config dir
+  # is private and the REC_* variables are cleared. GEMINI_API_KEY only passes
+  # when the gemini engine is asked for, since that run bills the API.
+  local keep_gemini=()
+  [[ " $* " == *gemini* ]] && keep_gemini=(GEMINI_API_KEY="${GEMINI_API_KEY:-}")
+  # The scope takes the tmux server out of the caller's process tree: an agent
+  # harness reaps what a tool call leaves behind, which would kill rec mid-run.
+  # rec is the pane's own process, with no shell around it, so Ctrl-C reaches
+  # it exactly as in a terminal and the dead pane reports its real exit status.
+  systemd-run --user --scope --quiet --unit="rec-verify-$id" \
+    "$(command -v tmux)" -L "rv-$id" -f "$state/tmux.conf" new-session -d -s rec -x 200 -y 50 -c "$state" \
+    env -u REC_OUT_DIR -u REC_ENGINE -u REC_WHISPER_MODEL -u REC_VAD_MODEL \
+    -u REC_MINUTES_CMD -u REC_POST_CMD -u GEMINI_API_KEY \
+    PATH="$path" XDG_CONFIG_HOME="$state/config" \
+    REC_MINUTES_CMD=rv-minutes REC_POST_CMD=rv-post "${keep_gemini[@]}" \
+    "$state/bin/rec" -o "$evidence" "$@"
+  echo "rv: started: rec -o $evidence $*" >&2
+}
+
+cmd_say() {
+  load "$1"
+  local who=$2 text=$3 sink
+  case $who in
+    self) sink=$self_sink ;;
+    other) sink=$other_sink ;;
+    *) die "say: self or other, got $who" ;;
+  esac
+  local wav=$state/say.wav
+  espeak-ng -v ja -w "$wav" "$text"
+  paplay -d "$sink" "$wav"
+  # A short gap between utterances and before a Ctrl-C, as in a real call.
+  sleep 1
+  printf '%s\t%s\t%s\n' "$(date +%T)" "$who" "$text" >>"$evidence/said.txt"
+}
+
+cmd_call() {
+  load "$1"
+  local app=$2
+  [[ $(systemctl --user is-active rec 2>/dev/null) == active ]] &&
+    die "the user's rec.service is running and would record this fake call too (real minutes cmd, real post cmd). Ask the user to stop it first."
+  # A transient user service, for the same reason as the scope in start.
+  systemd-run --user --quiet --unit="rec-verify-$id-call" \
+    --setenv=PULSE_PROP="application.process.binary=$app" \
+    "$(command -v parecord)" -d "$self_sink.monitor" /dev/null
+  printf '%s\tcall\t%s\n' "$(date +%T)" "$app" >>"$evidence/said.txt"
+}
+
+cmd_hangup() {
+  load "$1"
+  systemctl --user stop "rec-verify-$id-call.service"
+  printf '%s\thangup\n' "$(date +%T)" >>"$evidence/said.txt"
+}
+
+cmd_stop() {
+  load "$1"
+  tm send-keys -t rec C-c
+}
+
+cmd_wait() {
+  load "$1"
+  local re=$2 limit=${3:-300} t=0
+  until grep -Eq -- "$re" <<<"$(pane)"; do
+    ((t++ < limit)) || {
+      pane | tail -20 >&2
+      die "timed out after ${limit}s waiting for /$re/"
+    }
+    sleep 1
+  done
+}
+
+cmd_capture() {
+  load "$1"
+  pane >"$evidence/pane-$2.txt"
+  echo "$evidence/pane-$2.txt"
+}
+
+cmd_path() {
+  load "$1"
+  case $2 in
+    state) echo "$state" ;;
+    config) echo "$state/config" ;;
+    evidence) echo "$evidence" ;;
+    # rec's own timestamped output dir inside the evidence dir, newest first.
+    out) find "$evidence" -mindepth 1 -maxdepth 1 -type d -name '2*' | sort | tail -1 ;;
+    *) die "path: state|config|evidence|out" ;;
+  esac
+}
+
+cmd_down() {
+  load "$1"
+  # Stop only what this run started: its scope (tmux, rec, ffmpeg), its fake
+  # call, its two modules.
+  systemctl --user stop "rec-verify-$id.scope" "rec-verify-$id-call.service" 2>/dev/null || true
+  "$real_pactl" unload-module "$self_mod" 2>/dev/null || true
+  "$real_pactl" unload-module "$other_mod" 2>/dev/null || true
+  trash "$state"
+  echo "rv: down $id; evidence kept in $evidence" >&2
+}
+
+main() {
+  set -euo pipefail
+  init
+  local sub=${1:-help}
+  shift || true
+  case $sub in
+    up | doctor | start | say | call | hangup | stop | wait | capture | path | down) "cmd_$sub" "$@" ;;
+    help | -h | --help) usage ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"
